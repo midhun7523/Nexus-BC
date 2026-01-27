@@ -1,6 +1,7 @@
 # Nexus-BC
 Nexus-BC: A Multimodal Deep Learning Framework for Enhancing Diagnostic Sensitivity in Dense Breast Tissue through Radio genomic Fusion....
-#Project proposal
+
+# Project proposal
 Nexus-BC: A Multimodal Deep Learning Framework for Enhancing Diagnostic Sensitivity in Dense Breast Tissue through Radiogenomic Fusion.
 1. The Two Fixed Datasets
 Dataset A: The "Brain" (Biological Agent)
