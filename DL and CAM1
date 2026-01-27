@@ -1,0 +1,119 @@
+Breast Cancer Detection Using Deep Learning and Grad-CAM1. Introduction
+Breast cancer is one of the leading causes of cancer-related mortality among women worldwide. Early detection through screening mammography significantly improves survival rates; however, interpretation of mammograms is challenging due to subtle visual patterns, dense breast tissue, and inter-observer variability among radiologists. With the increasing volume of screening examinations and a global shortage of trained radiologists, there is a strong need for reliable computer-aided diagnostic (CAD) systems.
+This project focuses on developing a deep learning–based breast cancer detection system using screening mammograms from the RSNA Screening Mammography Breast Cancer Detection dataset. In addition to achieving high predictive performance, the project emphasizes model interpretability using Grad-CAM heatmaps, highlighting regions that contribute most to cancer predictions. This explainability component is critical for building trust in clinical AI systems.
+2. Problem Statement
+The objective of this project is to design and evaluate a deep learning model that can:
+Accurately classify screening mammograms as cancer-positive or cancer-negative.
+Handle multiple mammographic views per breast.
+Address extreme class imbalance inherent in screening datasets.
+Provide visual explanations using Grad-CAM to localize suspicious regions.
+The final output of the system is a probability score indicating the likelihood of malignancy for each breast, along with an interpretable heatmap highlighting potential cancerous regions.
+3. Dataset Description3.1 Dataset Overview
+The dataset used in this project is provided by the Radiological Society of North America (RSNA) and contains screening mammograms in DICOM format.
+Images are high-resolution mammograms acquired during routine screening.
+Each patient typically has four images (CC and MLO views for both breasts).
+Labels are provided at the breast level.
+3.2 Files and Structure
+train_images/[patient_id]/[image_id].dcm – Training mammograms
+test_images/[patient_id]/[image_id].dcm – Test mammograms (hidden labels)
+train.csv – Metadata and labels
+test.csv – Metadata (limited availability)
+sample_submission.csv – Submission format
+3.3 Key Features
+age: Patient age
+laterality: Left or right breast
+view: CC or MLO view
+density: Breast density (A–D)
+implant: Presence of implants
+cancer: Target label (train only)
+3.4 Challenges
+Extreme class imbalance (~1–2% cancer cases)
+High-resolution DICOM images
+JPEG2000 compression
+Subtle visual indicators of malignancy
+4. Methodology4.1 Data Preprocessing4.1.1 DICOM Processing
+DICOM images are loaded using pydicom.
+Pixel intensities are normalized to [0,1].
+JPEG2000 decoding is handled using pylibjpeg and openjpeg.
+4.1.2 Breast Region Extraction
+Background removal using thresholding and connected component analysis.
+Cropping to retain only the breast region.
+Horizontal flipping to normalize laterality.
+4.1.3 Image Resizing
+Images resized to 768×768 or 1024×1024 while preserving anatomical structure.
+4.2 Model Architecture
+A Convolutional Neural Network (CNN) is used as the backbone due to its strong performance in medical image analysis.
+Selected Model: EfficientNet-V2 / ConvNeXt
+Reasons for selection:
+Excellent performance on high-resolution images
+Efficient parameter utilization
+Strong spatial feature extraction
+The final classification layer outputs a single probability using a sigmoid activation.
+4.3 Multi-View Aggregation
+Each breast may have multiple views (CC and MLO). Predictions are first generated per image and then aggregated per breast using:
+Maximum probability (to prioritize sensitivity)
+This approach reduces the risk of missing small lesions visible in only one view.
+4.4 Handling Class Imbalance
+To address the skewed label distribution:
+Focal Loss is employed to emphasize hard positive samples.
+Class-weighted loss functions are used.
+Patient-level stratified splitting prevents data leakage.
+4.5 Training Strategy
+Optimizer: AdamW
+Learning Rate: 1e-4
+Scheduler: Cosine Annealing
+Batch Size: Tuned based on GPU memory
+Augmentations:
+Horizontal flips (after laterality normalization)
+Contrast enhancement (CLAHE)
+Mild rotations
+5. Explainability Using Grad-CAM5.1 Motivation
+Deep learning models are often considered black boxes. In medical applications, interpretability is essential for:
+Clinical trust
+Error analysis
+Regulatory acceptance
+5.2 Grad-CAM Method
+Gradient-weighted Class Activation Mapping (Grad-CAM) is applied to visualize important regions in the mammogram.
+Steps:
+Forward pass to obtain prediction
+Backward pass to compute gradients
+Weighted combination of feature maps
+Heatmap overlay on original image
+Red regions indicate areas that strongly influenced a cancer-positive prediction.
+6. Evaluation Metrics
+The model is evaluated using clinically relevant metrics:
+ROC-AUC
+Precision-Recall AUC
+Sensitivity (Recall)
+Specificity
+Confusion Matrix
+High sensitivity is prioritized to minimize false negatives.
+7. Experimental Results
+The trained model demonstrates:
+Strong discrimination between cancerous and non-cancerous cases
+Meaningful Grad-CAM heatmaps aligned with suspicious regions
+Improved performance compared to baseline CNN models
+Qualitative analysis shows that Grad-CAM highlights masses and architectural distortions consistent with malignant findings.
+8. Error Analysis
+Observed failure cases include:
+Dense breast tissue (category D)
+Subtle lesions with low contrast
+Implant-related artifacts
+These insights can guide future model improvements.
+9. Conclusion
+This project demonstrates the effectiveness of deep learning for breast cancer detection in screening mammography. By combining a high-performing CNN architecture with Grad-CAM explainability, the system achieves both predictive accuracy and interpretability. Such models have the potential to assist radiologists by reducing workload, improving diagnostic accuracy, and minimizing false positives.
+10. Future Work
+Multi-view attention-based fusion models
+Transformer-based architectures
+Clinical validation with expert annotations
+Integration into real-time CAD systems
+11. Tools and Technologies
+Python, PyTorch
+pydicom, OpenCV
+timm, torchvision
+pytorch-grad-cam
+Kaggle GPU environment
+12. References
+RSNA Screening Mammography Breast Cancer Detection Challenge
+Selvaraju et al., Grad-CAM: Visual Explanations from Deep Networks
+Tan & Le, EfficientNet
