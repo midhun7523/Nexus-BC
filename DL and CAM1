@@ -1,119 +1,329 @@
-Breast Cancer Detection Using Deep Learning and Grad-CAM1. Introduction
-Breast cancer is one of the leading causes of cancer-related mortality among women worldwide. Early detection through screening mammography significantly improves survival rates; however, interpretation of mammograms is challenging due to subtle visual patterns, dense breast tissue, and inter-observer variability among radiologists. With the increasing volume of screening examinations and a global shortage of trained radiologists, there is a strong need for reliable computer-aided diagnostic (CAD) systems.
-This project focuses on developing a deep learning–based breast cancer detection system using screening mammograms from the RSNA Screening Mammography Breast Cancer Detection dataset. In addition to achieving high predictive performance, the project emphasizes model interpretability using Grad-CAM heatmaps, highlighting regions that contribute most to cancer predictions. This explainability component is critical for building trust in clinical AI systems.
+Breast Cancer Detection Using Deep Learning and Grad-CAM
+1. Introduction
+Breast cancer remains one of the leading causes of cancer-related mortality among women worldwide, and early detection through screening mammography significantly improves survival rates. However, interpreting mammograms is challenging due to subtle visual patterns, dense breast tissue, and inter-observer variability among radiologists. With increasing screening volumes and a global shortage of trained radiologists, there is a strong need for reliable computer-aided diagnostic (CAD) systems.
+
+This project develops a deep learning–based breast cancer detection system using screening mammograms from the RSNA Screening Mammography Breast Cancer Detection dataset. In addition to high predictive performance, the project emphasizes model interpretability via Grad-CAM heatmaps that highlight regions contributing most to cancer predictions, a critical step for building trust in clinical AI systems.
+
 2. Problem Statement
-The objective of this project is to design and evaluate a deep learning model that can:
+The goal of this project is to design and evaluate a deep learning model that can:
+
 Accurately classify screening mammograms as cancer-positive or cancer-negative.
-Handle multiple mammographic views per breast.
+
+Handle multiple mammographic views per breast (CC and MLO).
+
 Address extreme class imbalance inherent in screening datasets.
+
 Provide visual explanations using Grad-CAM to localize suspicious regions.
-The final output of the system is a probability score indicating the likelihood of malignancy for each breast, along with an interpretable heatmap highlighting potential cancerous regions.
-3. Dataset Description3.1 Dataset Overview
-The dataset used in this project is provided by the Radiological Society of North America (RSNA) and contains screening mammograms in DICOM format.
-Images are high-resolution mammograms acquired during routine screening.
-Each patient typically has four images (CC and MLO views for both breasts).
+
+The final output for each breast is:
+
+A probability score indicating the likelihood of malignancy.
+
+An interpretable Grad-CAM heatmap highlighting potential cancerous regions.
+
+3. Dataset Description
+3.1 Overview
+The dataset is provided by the Radiological Society of North America (RSNA) and consists of screening mammograms in DICOM format.
+​
+
+High-resolution mammograms acquired during routine screening.
+
+Typically four images per patient (CC and MLO views for both breasts).
+
 Labels are provided at the breast level.
+​
+
 3.2 Files and Structure
+text
+data/
+  train_images/
+    [patient_id]/
+      [image_id].dcm
+  test_images/
+    [patient_id]/
+      [image_id].dcm
+  train.csv
+  test.csv
+  sample_submission.csv
 train_images/[patient_id]/[image_id].dcm – Training mammograms
-test_images/[patient_id]/[image_id].dcm – Test mammograms (hidden labels)
+
+test_images/[patient_id]/[image_id].dcm – Test mammograms (labels hidden)
+
 train.csv – Metadata and labels
-test.csv – Metadata (limited availability)
-sample_submission.csv – Submission format
+
+test.csv – Metadata (limited)
+
+sample_submission.csv – Submission format (Kaggle)
+​
+
 3.3 Key Features
 age: Patient age
+
 laterality: Left or right breast
+
 view: CC or MLO view
+
 density: Breast density (A–D)
+
 implant: Presence of implants
+
 cancer: Target label (train only)
+​
+
 3.4 Challenges
-Extreme class imbalance (~1–2% cancer cases)
-High-resolution DICOM images
-JPEG2000 compression
-Subtle visual indicators of malignancy
-4. Methodology4.1 Data Preprocessing4.1.1 DICOM Processing
-DICOM images are loaded using pydicom.
-Pixel intensities are normalized to [0,1].
-JPEG2000 decoding is handled using pylibjpeg and openjpeg.
+Extreme class imbalance (~1–2% cancer cases).
+
+Large, high-resolution DICOM images with JPEG2000 compression.
+
+Subtle visual indicators of malignancy.
+
+Dense tissue and imaging artifacts (e.g., implants).
+
+4. Methodology
+4.1 Data Preprocessing
+4.1.1 DICOM Processing
+python
+import pydicom
+import numpy as np
+
+def load_dicom(path):
+    dcm = pydicom.dcmread(path)
+    img = dcm.pixel_array.astype(np.float32)
+    img = (img - img.min()) / (img.max() - img.min() + 1e-6)
+    return img
+DICOM images are loaded with pydicom.
+
+Pixel intensities are normalized to 
+[
+0
+,
+1
+]
+[0,1].
+
+JPEG2000 decoding can be handled with pylibjpeg / openjpeg backends.
+​
+
 4.1.2 Breast Region Extraction
-Background removal using thresholding and connected component analysis.
-Cropping to retain only the breast region.
-Horizontal flipping to normalize laterality.
+python
+import cv2
+
+def extract_breast_region(img):
+    # Convert to 8-bit for OpenCV
+    img_uint8 = (img * 255).astype("uint8")
+    _, thresh = cv2.threshold(img_uint8, 0, 255, cv2.THRESH_OTSU)
+    # Keep largest connected component (breast)
+    num_labels, labels = cv2.connectedComponents(thresh)
+    largest_label = 1 + np.argmax([(labels == i).sum() for i in range(1, num_labels)])
+    mask = (labels == largest_label).astype("uint8")
+    x, y, w, h = cv2.boundingRect(mask)
+    cropped = img[y:y+h, x:x+w]
+    return cropped
+Background removal via thresholding and connected components.
+
+Crop to retain only the breast region.
+
+Horizontal flipping to normalize laterality (e.g., all breasts appear on the same side).
+
 4.1.3 Image Resizing
-Images resized to 768×768 or 1024×1024 while preserving anatomical structure.
+python
+import torch
+import torchvision.transforms as T
+
+resize_transform = T.Compose([
+    T.ToTensor(),
+    T.Resize((1024, 1024)),
+])
+Images are resized (e.g., 768×768 or 1024×1024) while preserving anatomy.
+
 4.2 Model Architecture
-A Convolutional Neural Network (CNN) is used as the backbone due to its strong performance in medical image analysis.
-Selected Model: EfficientNet-V2 / ConvNeXt
-Reasons for selection:
-Excellent performance on high-resolution images
-Efficient parameter utilization
-Strong spatial feature extraction
-The final classification layer outputs a single probability using a sigmoid activation.
+A Convolutional Neural Network (CNN) backbone is used due to proven performance in medical imaging. Candidate backbones:
+
+EfficientNet-V2
+
+ConvNeXt
+
+python
+from timm import create_model
+import torch.nn as nn
+
+class BreastCancerModel(nn.Module):
+    def __init__(self, backbone_name="efficientnetv2_s", pretrained=True):
+        super().__init__()
+        self.backbone = create_model(backbone_name, pretrained=pretrained, num_classes=0, global_pool="avg")
+        self.classifier = nn.Linear(self.backbone.num_features, 1)
+
+    def forward(self, x):
+        feats = self.backbone(x)
+        logits = self.classifier(feats)
+        probs = logits.sigmoid()
+        return probs
+Strong performance on high-resolution images, efficient parameter usage, and robust spatial feature extraction.
+​
+
+Final layer outputs a single malignancy probability via sigmoid.
+
 4.3 Multi-View Aggregation
-Each breast may have multiple views (CC and MLO). Predictions are first generated per image and then aggregated per breast using:
-Maximum probability (to prioritize sensitivity)
-This approach reduces the risk of missing small lesions visible in only one view.
+Each breast can have multiple views (CC, MLO). Image-level predictions are aggregated at the breast level:
+
+python
+import torch
+
+def aggregate_views(view_probs: torch.Tensor, method: str = "max"):
+    if method == "max":
+        return view_probs.max(dim=0).values
+    elif method == "mean":
+        return view_probs.mean(dim=0)
+    else:
+        raise ValueError("Unsupported aggregation method")
+Maximum probability aggregation is used to prioritize sensitivity and reduce the chance of missing lesions visible in only one view.
+​
+
 4.4 Handling Class Imbalance
-To address the skewed label distribution:
-Focal Loss is employed to emphasize hard positive samples.
-Class-weighted loss functions are used.
-Patient-level stratified splitting prevents data leakage.
+Focal Loss to focus on hard positive cases.
+
+Class-weighted loss based on cancer prevalence.
+
+Patient-level stratified splits to prevent data leakage.
+
+python
+from torch.nn import BCEWithLogitsLoss
+
+def get_class_weights(pos_fraction: float):
+    pos_weight = (1 - pos_fraction) / (pos_fraction + 1e-6)
+    return pos_weight
+
+pos_fraction = 0.015  # example (1.5% positives)
+criterion = BCEWithLogitsLoss(pos_weight=torch.tensor(get_class_weights(pos_fraction)))
 4.5 Training Strategy
 Optimizer: AdamW
-Learning Rate: 1e-4
-Scheduler: Cosine Annealing
-Batch Size: Tuned based on GPU memory
+
+Learning rate: 
+1
+×
+10
+−
+4
+1×10 
+−4
+  (with tuning)
+
+Scheduler: Cosine annealing
+
+Batch size: Tuned to GPU memory
+
 Augmentations:
+
 Horizontal flips (after laterality normalization)
-Contrast enhancement (CLAHE)
+
+Contrast enhancement (e.g., CLAHE)
+
 Mild rotations
-5. Explainability Using Grad-CAM5.1 Motivation
-Deep learning models are often considered black boxes. In medical applications, interpretability is essential for:
-Clinical trust
-Error analysis
-Regulatory acceptance
-5.2 Grad-CAM Method
-Gradient-weighted Class Activation Mapping (Grad-CAM) is applied to visualize important regions in the mammogram.
-Steps:
-Forward pass to obtain prediction
-Backward pass to compute gradients
-Weighted combination of feature maps
-Heatmap overlay on original image
-Red regions indicate areas that strongly influenced a cancer-positive prediction.
+
+python
+import torch.optim as optim
+
+optimizer = optim.AdamW(model.parameters(), lr=1e-4)
+scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
+5. Explainability Using Grad-CAM
+5.1 Motivation
+Deep learning models are often perceived as black boxes, and medical AI must be interpretable for clinical trust, error analysis, and regulatory acceptance. Grad-CAM provides localized heatmaps that reveal which image regions drove a cancer-positive prediction.
+
+5.2 Grad-CAM Implementation
+Grad-CAM is implemented using the pytorch-grad-cam library.
+​
+
+python
+from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from pytorch_grad_cam.utils.image import show_cam_on_image
+
+def generate_gradcam(model, input_tensor, target_layers, target_class=0):
+    model.eval()
+    cam = GradCAM(model=model, target_layers=target_layers)
+    targets = [ClassifierOutputTarget(target_class)]
+    grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
+    return grayscale_cam
+Typical steps:
+
+Forward pass to obtain prediction.
+
+Backward pass to compute gradients w.r.t. feature maps.
+
+Compute a weighted combination of feature maps.
+
+Overlay heatmap on the original image.
+
+Red or high-intensity regions indicate areas that strongly influenced a cancer-positive prediction.
+
 6. Evaluation Metrics
-The model is evaluated using clinically relevant metrics:
+The model is evaluated using standard and clinically meaningful metrics:
+
 ROC-AUC
-Precision-Recall AUC
+
+Precision–Recall AUC
+
 Sensitivity (Recall)
+
 Specificity
-Confusion Matrix
-High sensitivity is prioritized to minimize false negatives.
+
+Confusion matrix
+
+High sensitivity is prioritized to minimize false negatives in screening.
+
 7. Experimental Results
-The trained model demonstrates:
-Strong discrimination between cancerous and non-cancerous cases
-Meaningful Grad-CAM heatmaps aligned with suspicious regions
-Improved performance compared to baseline CNN models
-Qualitative analysis shows that Grad-CAM highlights masses and architectural distortions consistent with malignant findings.
+Initial experiments show:
+
+Strong discrimination between cancerous and non-cancerous cases.
+
+Grad-CAM heatmaps align with suspicious masses and architectural distortions.
+
+Improved performance compared to baseline CNN models (e.g., plain ResNet).
+
+Qualitative inspection confirms that Grad-CAM often highlights regions consistent with malignant findings in mammograms.
+
 8. Error Analysis
-Observed failure cases include:
-Dense breast tissue (category D)
-Subtle lesions with low contrast
-Implant-related artifacts
-These insights can guide future model improvements.
+Common failure patterns:
+
+Very dense breast tissue (density category D).
+
+Subtle, low-contrast lesions.
+
+Artifacts related to implants or acquisition.
+
+These observations motivate future work on density-aware modeling and more robust representation learning.
+
 9. Conclusion
-This project demonstrates the effectiveness of deep learning for breast cancer detection in screening mammography. By combining a high-performing CNN architecture with Grad-CAM explainability, the system achieves both predictive accuracy and interpretability. Such models have the potential to assist radiologists by reducing workload, improving diagnostic accuracy, and minimizing false positives.
+This project demonstrates that deep learning, combined with Grad-CAM explainability, can provide accurate and interpretable breast cancer detection on screening mammograms. The model has potential to assist radiologists by reducing workload, improving diagnostic accuracy, and lowering missed-cancer rates in large-scale screening settings.
+
 10. Future Work
-Multi-view attention-based fusion models
-Transformer-based architectures
-Clinical validation with expert annotations
-Integration into real-time CAD systems
+Multi-view attention-based fusion architectures.
+
+Transformer-based models (e.g., ViT, Swin) for mammography.
+
+Clinical validation using expert radiologist annotations.
+
+Integration into real-time CAD workflows and reader studies.
+
 11. Tools and Technologies
 Python, PyTorch
-pydicom, OpenCV
+
+pydicom, pylibjpeg, openjpeg
+
 timm, torchvision
+
 pytorch-grad-cam
-Kaggle GPU environment
+
+Kaggle GPU environment (RSNA competition setup)
+
 12. References
-RSNA Screening Mammography Breast Cancer Detection Challenge
-Selvaraju et al., Grad-CAM: Visual Explanations from Deep Networks
-Tan & Le, EfficientNet
+RSNA Screening Mammography Breast Cancer Detection (Kaggle Competition).
+​
+
+Selvaraju et al., Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization.
+​
+
+Tan & Le, EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks.
+​
+
+Ameen et al., Explainable Mammogram Analysis with EfficientNetV2 and Grad-CAM++.
